@@ -1,0 +1,132 @@
+# Ultra-Planning V3 Configuration
+# Customize automation behavior
+
+# Automation Features
+automation:
+  # Template Injector: Auto-fill templates with past knowledge
+  template_injection: true
+
+  # Error Monitor: Auto-capture errors from terminal
+  error_monitoring: true
+
+  # File Watcher: Real-time file monitoring
+  file_watching: true
+
+  # Auto-Embedder: Automatic vector generation
+  auto_embedding: true
+
+  # Knowledge Indexer: Auto-generate index.md
+  auto_indexing: true
+
+  # Smart Extraction: Claude Code integration
+  claude_extraction: true
+
+# Monitoring Settings
+monitoring:
+  # Idle threshold for triggering extraction (minutes)
+  idle_threshold_minutes: 5
+
+  # File watcher debounce (seconds)
+  file_debounce_seconds: 2
+
+  # Error patterns to detect
+  terminal_patterns:
+    - 'Error:'
+    - 'Exception:'
+    - 'Failed:'
+    - 'Traceback'
+    - 'npm ERR!'
+    - 'fatal:'
+
+# Template Injection Settings
+template_injection:
+  # Relevance threshold for pattern/failure matching (0.0-1.0)
+  relevance_threshold: 0.3
+
+  # Maximum patterns to inject
+  max_patterns: 3
+
+  # Maximum failures to show
+  max_failures: 3
+
+  # Maximum decisions to show
+  max_decisions: 2
+
+# Semantic Search Settings
+semantic_search:
+  # Model for embeddings
+  model: 'BAAI/bge-large-en-v1.5'
+
+  # Similarity threshold for cross-references (0.0-1.0)
+  cross_reference_threshold: 0.75
+
+  # Maximum cross-references to show
+  max_cross_references: 10
+
+# Extraction Triggers
+extraction:
+  # Trigger on N discoveries in context.md
+  discovery_trigger: 2
+
+  # Trigger on N completed phases
+  phase_trigger: 1
+
+  # Trigger on N errors documented
+  error_trigger: 2
+
+# Session Settings
+session:
+  # Auto-start file watcher
+  auto_start_watcher: true
+
+  # Auto-load previous handoff
+  auto_load_handoff: true
+
+  # Generate YAML handoffs (more compact)
+  use_yaml_handoffs: true
+
+# Knowledge Base Settings
+knowledge:
+  # Auto-update index on knowledge changes
+  auto_update_index: true
+
+  # Auto-generate embeddings on knowledge changes
+  auto_generate_embeddings: true
+
+  # Keyword extraction minimum word length
+  keyword_min_length: 3
+
+  # Maximum keywords in index
+  max_keywords_in_index: 50
+
+# Optional: Claude API (for future direct integration)
+# Note: V3 uses Claude Code subscription, this is for future enhancements
+claude_api:
+  # API key (leave empty to use Claude Code only)
+  api_key: ''
+
+  # Model to use (if direct API enabled in future)
+  model: 'claude-sonnet-4-5-20250929'
+
+# Paths (relative to .project-memory/)
+# Usually no need to change these
+paths:
+  active_dir: 'active'
+  knowledge_dir: 'knowledge'
+  vectors_dir: 'knowledge/vectors'
+  handoffs_dir: 'handoffs'
+  ledgers_dir: 'ledgers'
+  plans_dir: 'plans'
+  archive_dir: 'archive'
+  scripts_dir: 'scripts'
+
+# Advanced Settings
+advanced:
+  # Verbose logging
+  verbose: false
+
+  # Debug mode
+  debug: false
+
+  # Dry run (show what would happen without doing it)
+  dry_run: false

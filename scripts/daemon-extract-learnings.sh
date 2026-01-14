@@ -8,7 +8,7 @@ set -e
 MEMORY_DIR="${PROJECT_MEMORY_DIR:-.project-memory}"
 IDLE_THRESHOLD=300  # 5 minutes in seconds
 
-echo "🤖 Daemon Learning Extractor Starting..."
+echo "🤖 Ultra-Planning V3: Daemon Learning Extractor"
 echo "   Idle threshold: ${IDLE_THRESHOLD}s (5 minutes)"
 echo ""
 
@@ -172,19 +172,27 @@ main() {
         echo "✓ Session idle >5 min. Starting extraction..."
         echo ""
 
-        extract_patterns
-        extract_failures
-        extract_decisions
-        update_index
-        create_handoff
+        # V3: Use orchestrator for intelligent extraction
+        if command -v python3 &> /dev/null && [ -f "$MEMORY_DIR/scripts/session-orchestrator.py" ]; then
+            echo "🤖 Using V3 orchestrator for smart extraction..."
+            python3 "$MEMORY_DIR/scripts/session-orchestrator.py" idle
+        else
+            # V2 fallback
+            echo "⚠️  V3 not available, using V2 extraction..."
+            extract_patterns
+            extract_failures
+            extract_decisions
+            update_index
+            create_handoff
 
-        echo ""
-        echo "════════════════════════════════════════════════════"
-        echo "  ✅ Learning extraction complete!"
-        echo "════════════════════════════════════════════════════"
-        echo ""
-        echo "Next session will load this knowledge automatically."
-        echo ""
+            echo ""
+            echo "════════════════════════════════════════════════════"
+            echo "  ✅ Learning extraction complete!"
+            echo "════════════════════════════════════════════════════"
+            echo ""
+            echo "Next session will load this knowledge automatically."
+            echo ""
+        fi
     else
         echo "   Session not idle yet. Waiting..."
     fi

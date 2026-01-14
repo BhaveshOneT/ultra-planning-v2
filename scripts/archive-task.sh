@@ -8,7 +8,7 @@ MEMORY_DIR="${PROJECT_MEMORY_DIR:-.project-memory}"
 ARCHIVE_DATE=$(date +%Y-%m-%d)
 
 echo "════════════════════════════════════════════════════"
-echo "  📦 Ultra-Planning V2: Archive Task"
+echo "  📦 Ultra-Planning V3: Archive Task"
 echo "════════════════════════════════════════════════════"
 echo ""
 
@@ -16,6 +16,14 @@ echo ""
 if [ ! -f "$MEMORY_DIR/active/task_plan.md" ]; then
     echo "❌ No active task found to archive"
     exit 1
+fi
+
+# V3: Call orchestrator for clean shutdown
+if command -v python3 &> /dev/null && [ -f "$MEMORY_DIR/scripts/session-orchestrator.py" ]; then
+    echo "🤖 Running V3 session cleanup..."
+    echo ""
+    python3 "$MEMORY_DIR/scripts/session-orchestrator.py" end
+    echo ""
 fi
 
 # Extract task name from task_plan.md

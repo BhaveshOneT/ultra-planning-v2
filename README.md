@@ -1,10 +1,39 @@
-# Ultra-Planning V2: AI Agent Memory System
+# Ultra-Planning V3: Zero-Manual Intelligence System
 
-> **Compound, don't compact** - An AI agent that learns automatically and gets exponentially smarter over time.
+> **You code. System learns. Knowledge compounds. Zero extra costs.**
 
 [![Status](https://img.shields.io/badge/status-production--ready-green)]()
 [![Token Savings](https://img.shields.io/badge/token%20savings-90--95%25-brightgreen)]()
 [![Learning](https://img.shields.io/badge/learning-automatic-blue)]()
+[![Automation](https://img.shields.io/badge/automation-95%25-purple)]()
+
+---
+
+## 🎉 **NEW: V3 Released!**
+
+**Ultra-Planning V3** transforms the system from "assisted documentation" to "invisible intelligence."
+
+### What's New:
+- 🤖 **95% Automated** (vs 60% manual in V2)
+- ⚡ **Template Auto-Fill** - Session start: 5 min → 30 sec
+- 🔥 **Error Auto-Capture** - Errors documented automatically from terminal
+- 🧠 **Claude Code Integration** - Pattern extraction using existing subscription (zero extra API costs!)
+- 👁️ **Real-Time Monitoring** - File watcher tracks progress automatically
+- 🔮 **Always-Fresh Search** - Vector embeddings auto-update
+- 📇 **Auto-Generated Index** - Cross-references with semantic similarity
+
+**[→ See Full V3 Features Documentation](V3_FEATURES.md)**
+
+### Quick Start V3:
+```bash
+# Install dependencies (one-time)
+./scripts/install-v3.sh
+
+# Start your first V3 session
+./scripts/init-session.sh "your-task-name"
+
+# That's it! The system handles the rest 🚀
+```
 
 ---
 

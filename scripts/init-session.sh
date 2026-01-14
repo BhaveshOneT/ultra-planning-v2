@@ -9,7 +9,7 @@ TASK_NAME="${1:-unnamed-task}"
 SESSION_ID="sess_$(date +%Y%m%d_%H%M%S)"
 
 echo "════════════════════════════════════════════════════"
-echo "  🚀 Ultra-Planning V2: Initialize Session"
+echo "  🚀 Ultra-Planning V3: Initialize Session"
 echo "════════════════════════════════════════════════════"
 echo ""
 echo "Task: $TASK_NAME"
@@ -51,34 +51,46 @@ if [ -f "$MEMORY_DIR/ledgers/TEMPLATE_CONTINUITY.md" ]; then
     echo "✓ Created continuity ledger"
 fi
 
-# Load previous knowledge
+# V3: Start session orchestrator for intelligent automation
 echo ""
-echo "📚 Loading knowledge base..."
+echo "🤖 Starting V3 automation..."
+echo ""
 
-if [ -f "$MEMORY_DIR/knowledge/patterns.md" ]; then
-    PATTERN_COUNT=$(grep -c "^## Pattern:" "$MEMORY_DIR/knowledge/patterns.md" 2>/dev/null || echo "0")
-    echo "   • Patterns available: $PATTERN_COUNT"
-fi
-
-if [ -f "$MEMORY_DIR/knowledge/failures.md" ]; then
-    FAILURE_COUNT=$(grep -c "^## Error:\|^## Anti-Pattern:" "$MEMORY_DIR/knowledge/failures.md" 2>/dev/null || echo "0")
-    echo "   • Known failures: $FAILURE_COUNT"
-fi
-
-# Check for previous handoff
-if [ -f "$MEMORY_DIR/handoffs/latest.yaml" ]; then
+# Check if Python is available
+if command -v python3 &> /dev/null; then
+    python3 "$MEMORY_DIR/scripts/session-orchestrator.py" start "$TASK_NAME"
+else
+    echo "⚠️  Python3 not found, falling back to V2 mode..."
     echo ""
-    echo "📦 Previous session found:"
-    grep "^task:\|^status:" "$MEMORY_DIR/handoffs/latest.yaml" | sed 's/^/   /'
-fi
 
-echo ""
-echo "════════════════════════════════════════════════════"
-echo "  ✅ Session initialized successfully!"
-echo "════════════════════════════════════════════════════"
-echo ""
-echo "Next steps:"
-echo "  1. Edit .project-memory/active/task_plan.md"
-echo "  2. Fill in Pre-Task Intelligence from knowledge/"
-echo "  3. Start working!"
-echo ""
+    # V2 fallback: Load previous knowledge
+    echo "📚 Loading knowledge base..."
+
+    if [ -f "$MEMORY_DIR/knowledge/patterns.md" ]; then
+        PATTERN_COUNT=$(grep -c "^## Pattern:" "$MEMORY_DIR/knowledge/patterns.md" 2>/dev/null || echo "0")
+        echo "   • Patterns available: $PATTERN_COUNT"
+    fi
+
+    if [ -f "$MEMORY_DIR/knowledge/failures.md" ]; then
+        FAILURE_COUNT=$(grep -c "^## Error:\|^## Anti-Pattern:" "$MEMORY_DIR/knowledge/failures.md" 2>/dev/null || echo "0")
+        echo "   • Known failures: $FAILURE_COUNT"
+    fi
+
+    # Check for previous handoff
+    if [ -f "$MEMORY_DIR/handoffs/latest.yaml" ]; then
+        echo ""
+        echo "📦 Previous session found:"
+        grep "^task:\|^status:" "$MEMORY_DIR/handoffs/latest.yaml" | sed 's/^/   /'
+    fi
+
+    echo ""
+    echo "════════════════════════════════════════════════════"
+    echo "  ✅ Session initialized successfully!"
+    echo "════════════════════════════════════════════════════"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Edit .project-memory/active/task_plan.md"
+    echo "  2. Install V3 dependencies: scripts/install-v3.sh"
+    echo "  3. Start working!"
+    echo ""
+fi

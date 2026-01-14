@@ -1,0 +1,35 @@
+#!/bin/bash
+#
+# Ultra-Planning V3: Post-Commit Hook
+# Reminds Claude Code to extract learnings from commits
+#
+# Installation:
+#   cp .project-memory/scripts/git-hooks/post-commit .git/hooks/post-commit
+#   chmod +x .git/hooks/post-commit
+#
+
+# Get commit message
+COMMIT_MSG=$(git log -1 --pretty=%B)
+COMMIT_HASH=$(git log -1 --pretty=%h)
+
+# Check if this is in a project using Ultra-Planning
+if [ -d ".project-memory" ] || [ -d "../.project-memory" ]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📝 Commit created: Claude Code can extract learnings!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+    echo "Commit: [$COMMIT_HASH] $COMMIT_MSG"
+    echo ""
+    echo "💡 Ask Claude Code:"
+    echo '   "Extract pattern from this commit to patterns.md"'
+    echo '   "Document any decisions to decisions.md"'
+    echo ""
+    echo "Or run the smart prompt helper:"
+    echo "   python3 .project-memory/scripts/smart-prompt-helper.py --create"
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
+fi
+
+exit 0
