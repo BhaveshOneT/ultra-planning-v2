@@ -126,10 +126,27 @@ def get_model_cache_info():
 # Parsed Data Caching (Markdown Sections)
 # ============================================================================
 
+# Mapping of filename patterns to their section prefixes
+SECTION_PREFIXES = {
+    'patterns': '## Pattern:',
+    'failures': '## Error:',
+    'decisions': '## Decision:',
+    'gotchas': '## Gotcha:',
+}
+
+
+def get_section_prefix(filename: str) -> str:
+    """Get the section prefix for a given filename."""
+    for key, prefix in SECTION_PREFIXES.items():
+        if key in filename:
+            return prefix
+    return '## '
+
+
 @lru_cache(maxsize=16)
 def parse_sections_cached(file_path: str, file_hash: str) -> tuple:
     """
-    Parse markdown file into sections with caching
+    Parse markdown file into sections with caching.
 
     Cache key includes file hash to auto-invalidate when file changes.
 
@@ -139,50 +156,28 @@ def parse_sections_cached(file_path: str, file_hash: str) -> tuple:
 
     Returns:
         Tuple of section dicts (hashable for caching)
-
-    Note: Returns tuple instead of list for hashability
     """
     import re
 
     path = Path(file_path)
-
     if not path.exists():
         return tuple()
 
     content = load_file_cached(file_path)
+    section_prefix = get_section_prefix(path.name)
+    pattern = r'\n' + re.escape(section_prefix)
 
-    # Determine section pattern based on file type
-    if 'patterns' in path.name:
-        pattern = r'\n## Pattern:'
-        section_prefix = '## Pattern:'
-    elif 'failures' in path.name:
-        pattern = r'\n## Error:'
-        section_prefix = '## Error:'
-    elif 'decisions' in path.name:
-        pattern = r'\n## Decision:'
-        section_prefix = '## Decision:'
-    elif 'gotchas' in path.name:
-        pattern = r'\n## Gotcha:'
-        section_prefix = '## Gotcha:'
-    else:
-        # Generic heading parsing
-        pattern = r'\n## '
-        section_prefix = '## '
-
-    # Split into sections
     splits = re.split(pattern, content)
 
     sections = []
-    for i, section in enumerate(splits[1:], 1):  # Skip first empty split
-        section_dict = {
+    for i, section in enumerate(splits[1:], 1):
+        sections.append({
             'id': f'{path.stem}_section_{i}',
             'file': path.name,
             'content': section_prefix + section.strip(),
             'preview': section[:100].strip()
-        }
-        sections.append(section_dict)
+        })
 
-    # Return as tuple for hashability
     return tuple(sections)
 
 

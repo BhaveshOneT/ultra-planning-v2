@@ -247,71 +247,71 @@ def add_to_error_log_table(error_data: Dict) -> None:
     print(f"✅ Error added to task_plan.md error log table")
 
 
-def monitor_stdin():
+def process_error_from_buffer(buffer: List[str], command_context: Optional[str] = None) -> None:
+    """Extract error details from buffer and document them."""
+    error_line_index = len(buffer) - 1
+    symptom = extract_error_symptom(buffer, error_line_index)
+    command = command_context or extract_command_context(buffer, error_line_index)
+    stack_trace_lines = extract_stack_trace(buffer, error_line_index)
+    stack_trace = ''.join(stack_trace_lines)
+
+    error_data = {
+        'symptom': symptom,
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'command': command,
+        'stack_trace': stack_trace,
+    }
+
+    print()
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("🔥 ERROR DETECTED:")
+    print(f"   {symptom}")
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    add_to_failures_md(error_data)
+    add_to_error_log_table(error_data)
+    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print()
+
+
+def process_line(line: str, buffer: List[str], buffer_limit: int, command_context: Optional[str] = None) -> None:
+    """Process a single line: print, buffer, and check for errors."""
+    print(line, end='')
+    sys.stdout.flush()
+
+    buffer.append(line)
+    if len(buffer) > buffer_limit:
+        buffer.pop(0)
+
+    if detect_error(line):
+        process_error_from_buffer(buffer, command_context)
+
+
+def monitor_stdin() -> None:
     """Monitor stdin for errors (for pipe mode)"""
     print("🔥 Error Monitor: Watching for errors...")
     print("   (Monitoring terminal output - press Ctrl+C to stop)")
     print()
 
     buffer = []
-    buffer_limit = 100  # Keep last 100 lines for context
+    buffer_limit = 100
 
     try:
         while True:
-            # Check if stdin has data (non-blocking)
             if sys.stdin in select.select([sys.stdin], [], [], 0.1)[0]:
                 line = sys.stdin.readline()
-
-                if not line:  # EOF
+                if not line:
                     break
-
-                # Print line (passthrough)
-                print(line, end='')
-                sys.stdout.flush()
-
-                # Add to buffer
-                buffer.append(line)
-                if len(buffer) > buffer_limit:
-                    buffer.pop(0)
-
-                # Check for error
-                if detect_error(line):
-                    # Extract error details
-                    error_line_index = len(buffer) - 1
-                    symptom = extract_error_symptom(buffer, error_line_index)
-                    command = extract_command_context(buffer, error_line_index)
-                    stack_trace_lines = extract_stack_trace(buffer, error_line_index)
-                    stack_trace = ''.join(stack_trace_lines)
-
-                    error_data = {
-                        'symptom': symptom,
-                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                        'command': command,
-                        'stack_trace': stack_trace,
-                    }
-
-                    # Document error
-                    print()
-                    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                    print("🔥 ERROR DETECTED:")
-                    print(f"   {symptom}")
-                    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                    add_to_failures_md(error_data)
-                    add_to_error_log_table(error_data)
-                    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-                    print()
-
+                process_line(line, buffer, buffer_limit)
     except KeyboardInterrupt:
         print("\n🛑 Error monitor stopped")
 
 
-def monitor_command(command: List[str]):
+def monitor_command(command: List[str]) -> int:
     """Run a command and monitor its output for errors"""
     print(f"🔥 Error Monitor: Running command with monitoring...")
     print(f"   Command: {' '.join(command)}")
     print()
 
-    # Run command and capture output
     process = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -322,45 +322,12 @@ def monitor_command(command: List[str]):
 
     buffer = []
     buffer_limit = 100
+    command_str = ' '.join(command)
 
     for line in iter(process.stdout.readline, ''):
         if not line:
             break
-
-        # Print line (passthrough)
-        print(line, end='')
-        sys.stdout.flush()
-
-        # Add to buffer
-        buffer.append(line)
-        if len(buffer) > buffer_limit:
-            buffer.pop(0)
-
-        # Check for error
-        if detect_error(line):
-            error_line_index = len(buffer) - 1
-            symptom = extract_error_symptom(buffer, error_line_index)
-            command_str = ' '.join(command)
-            stack_trace_lines = extract_stack_trace(buffer, error_line_index)
-            stack_trace = ''.join(stack_trace_lines)
-
-            error_data = {
-                'symptom': symptom,
-                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'command': command_str,
-                'stack_trace': stack_trace,
-            }
-
-            # Document error
-            print()
-            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            print("🔥 ERROR DETECTED:")
-            print(f"   {symptom}")
-            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            add_to_failures_md(error_data)
-            add_to_error_log_table(error_data)
-            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            print()
+        process_line(line, buffer, buffer_limit, command_str)
 
     process.wait()
     return process.returncode

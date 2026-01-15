@@ -72,40 +72,13 @@ def parse_sections(file_path: Path) -> List[Dict]:
     if not file_path.exists():
         return []
 
-    # Use cached file loading
-    content = cache_manager.load_file_cached(str(file_path))
+    file_hash = hash_file(file_path)
+    if not file_hash:
+        return []
 
-    # Determine section pattern based on file type
-    if 'patterns' in file_path.name:
-        pattern = r'\n## Pattern:'
-        section_prefix = '## Pattern:'
-    elif 'failures' in file_path.name:
-        pattern = r'\n## Error:'
-        section_prefix = '## Error:'
-    elif 'decisions' in file_path.name:
-        pattern = r'\n## Decision:'
-        section_prefix = '## Decision:'
-    elif 'gotchas' in file_path.name:
-        pattern = r'\n## Gotcha:'
-        section_prefix = '## Gotcha:'
-    else:
-        # Generic heading parsing
-        pattern = r'\n## '
-        section_prefix = '## '
-
-    # Split into sections
-    splits = re.split(pattern, content)
-
-    sections = []
-    for i, section in enumerate(splits[1:], 1):  # Skip first empty split
-        sections.append({
-            'id': f'{file_path.stem}_section_{i}',
-            'file': file_path.name,
-            'content': section_prefix + section.strip(),
-            'preview': section[:100].strip()
-        })
-
-    return sections
+    # Use cached parsing from cache_manager
+    sections_tuple = cache_manager.parse_sections_cached(str(file_path), file_hash)
+    return list(sections_tuple)
 
 
 def embed_sections(sections: List[Dict], model: SentenceTransformer) -> List[np.ndarray]:

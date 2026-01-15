@@ -59,66 +59,46 @@ def generate_embeddings():
     knowledge_dir = MEMORY_DIR / "knowledge"
     VECTOR_DIR.mkdir(exist_ok=True)
 
-    files = {
-        "patterns": knowledge_dir / "patterns.md",
-        "failures": knowledge_dir / "failures.md",
-        "decisions": knowledge_dir / "decisions.md",
-        "gotchas": knowledge_dir / "gotchas.md",
-    }
+    files = ["patterns", "failures", "decisions", "gotchas"]
 
     print("\n🧠 Generating embeddings...")
 
-    for name, filepath in files.items():
+    for name in files:
+        filepath = knowledge_dir / f"{name}.md"
         if not filepath.exists():
             continue
 
-        # Read file and split by sections (## headers)
-        with open(filepath, "r") as f:
-            content = f.read()
+        # Use cached file loading and get section prefix from cache_manager
+        content = cache_manager.load_file_cached(str(filepath))
+        section_prefix = cache_manager.get_section_prefix(filepath.name)
 
-        # Split by ## Pattern: or ## Error: etc
+        # Parse sections using the same logic as cache_manager
+        import re
+        pattern = r'\n' + re.escape(section_prefix)
+        splits = re.split(pattern, content)
+
         sections = []
-        current_section = []
-        current_header = None
-
-        for line in content.split("\n"):
-            if line.startswith("## ") and any(
-                keyword in line
-                for keyword in ["Pattern:", "Error:", "Decision:", "Gotcha:"]
-            ):
-                if current_section and current_header:
-                    sections.append(
-                        {
-                            "header": current_header,
-                            "content": "\n".join(current_section),
-                        }
-                    )
-                current_header = line
-                current_section = [line]
-            else:
-                current_section.append(line)
-
-        # Add last section
-        if current_section and current_header:
-            sections.append(
-                {"header": current_header, "content": "\n".join(current_section)}
-            )
+        for section in splits[1:]:
+            header = section_prefix + section.split('\n')[0].strip()
+            full_content = section_prefix + section.strip()
+            sections.append({
+                "header": header,
+                "content": full_content,
+            })
 
         if not sections:
             print(f"  ⊘ {name}.md: No content to embed")
             continue
 
-        # Generate embeddings
         texts = [s["content"] for s in sections]
         embeddings = model.encode(texts, show_progress_bar=False)
 
-        # Save embeddings and metadata
         vector_data = {
             "file": str(filepath),
             "sections": [
                 {
                     "header": s["header"],
-                    "content": s["content"][:500],  # Store first 500 chars
+                    "content": s["content"][:500],
                     "embedding": emb.tolist(),
                 }
                 for s, emb in zip(sections, embeddings)

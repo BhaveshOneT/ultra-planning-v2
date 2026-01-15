@@ -7,7 +7,7 @@ Standard RAG pattern for improved search accuracy
 
 import sys
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict
 
 # Add scripts dir to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -240,56 +240,42 @@ def test_reranker():
     print()
 
     if not RERANKER_AVAILABLE:
-        print("❌ sentence-transformers not installed")
+        print("Error: sentence-transformers not installed")
         print("   Install with: pip install sentence-transformers")
         return
 
     print("Testing reranker model loading...")
     try:
         model = load_reranker_model()
-        print(f"✅ Reranker loaded: {model}")
+        print(f"Reranker loaded: {model}")
         print()
     except Exception as e:
-        print(f"❌ Failed to load reranker: {e}")
+        print(f"Failed to load reranker: {e}")
         return
 
     # Test with sample candidates
-    print("Testing reranking with sample data...")
     query = "how to fix jwt token expiration"
-
     candidates = [
-        {
-            'content': 'JWT tokens expire after 1 hour. Use refresh tokens to get new access tokens.',
-            'file': 'patterns.md',
-            'score': 0.75
-        },
-        {
-            'content': 'Database connection timeout errors can be resolved by increasing pool size.',
-            'file': 'failures.md',
-            'score': 0.70
-        },
-        {
-            'content': 'To handle token expiration, implement automatic token refresh on 401 errors.',
-            'file': 'patterns.md',
-            'score': 0.68
-        }
+        {'content': 'JWT tokens expire after 1 hour. Use refresh tokens to get new access tokens.',
+         'file': 'patterns.md', 'score': 0.75},
+        {'content': 'Database connection timeout errors can be resolved by increasing pool size.',
+         'file': 'failures.md', 'score': 0.70},
+        {'content': 'To handle token expiration, implement automatic token refresh on 401 errors.',
+         'file': 'patterns.md', 'score': 0.68}
     ]
 
-    print(f"Query: '{query}'")
-    print(f"Candidates: {len(candidates)}")
+    print(f"Testing reranking: '{query}' ({len(candidates)} candidates)")
     print()
 
-    # Rerank
     reranked = rerank_results(query, candidates, top_k=3)
 
     print("Results (reranked):")
     for i, result in enumerate(reranked, 1):
-        print(f"{i}. Score: {result['rerank_score']:.3f}")
-        print(f"   File: {result['file']}")
-        print(f"   Content: {result['content'][:80]}...")
+        print(f"{i}. Score: {result['rerank_score']:.3f} | {result['file']}")
+        print(f"   {result['content'][:80]}...")
         print()
 
-    print("✅ Reranker working correctly!")
+    print("Reranker working correctly!")
 
 
 def main():

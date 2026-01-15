@@ -11,46 +11,61 @@ Usage:
 """
 
 import sys
-import os
 import json
 from pathlib import Path
+
+# Add scripts dir to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+import cache_manager
 
 try:
     import tree_sitter_languages as tsl
 except ImportError:
-    print("❌ Error: tree-sitter-languages not installed")
+    print("Error: tree-sitter-languages not installed")
     print("Install with: pip install tree-sitter tree-sitter-languages")
     sys.exit(1)
 
-MEMORY_DIR = Path(os.environ.get("PROJECT_MEMORY_DIR", ".project-memory"))
+MEMORY_DIR = Path(__file__).parent.parent
 TLDR_DIR = MEMORY_DIR / "knowledge" / "code_tldr"
 
+# Language extension mapping
+LANGUAGE_MAP = {
+    ".ts": "typescript",
+    ".tsx": "tsx",
+    ".js": "javascript",
+    ".jsx": "jsx",
+    ".py": "python",
+    ".go": "go",
+    ".rs": "rust",
+    ".java": "java",
+}
 
-def get_language_parser(filepath):
+SUPPORTED_EXTENSIONS = set(LANGUAGE_MAP.keys())
+
+
+def get_language_parser(filepath: Path):
     """Get tree-sitter parser for file type"""
-    ext = filepath.suffix
-    lang_map = {
-        ".ts": "typescript",
-        ".tsx": "tsx",
-        ".js": "javascript",
-        ".jsx": "jsx",
-        ".py": "python",
-        ".go": "go",
-        ".rs": "rust",
-        ".java": "java",
-    }
-
-    lang = lang_map.get(ext)
+    lang = LANGUAGE_MAP.get(filepath.suffix)
     if not lang:
         return None
-
     return tsl.get_parser(lang)
 
 
-def analyze_ast(tree, source_code):
-    """Layer 1: AST - Extract exports, imports, types"""
-    root = tree.root_node
+def _get_node_text(node, source_code: str) -> str:
+    """Extract text from a tree-sitter node"""
+    return source_code[node.start_byte:node.end_byte]
 
+
+def _find_child_by_type(node, types: list) -> str:
+    """Find first child matching one of the given types and return its text"""
+    for child in node.children:
+        if child.type in types:
+            return child
+    return None
+
+
+def analyze_ast(tree, source_code: str) -> dict:
+    """Layer 1: AST - Extract exports, imports, types"""
     exports = []
     imports = []
     types = []
@@ -58,43 +73,34 @@ def analyze_ast(tree, source_code):
     functions = []
 
     def traverse(node):
-        # Extract exports
-        if node.type in ["export_statement", "export_declaration"]:
-            exports.append(source_code[node.start_byte : node.end_byte])
+        node_type = node.type
+        text = _get_node_text(node, source_code)
 
-        # Extract imports
-        if node.type in ["import_statement", "import_declaration"]:
-            imports.append(source_code[node.start_byte : node.end_byte])
-
-        # Extract function/class definitions
-        if node.type in ["function_declaration", "method_definition"]:
-            name = None
-            for child in node.children:
-                if child.type in ["identifier", "property_identifier"]:
-                    name = source_code[child.start_byte : child.end_byte]
-                    break
-            if name:
-                functions.append(name)
-
-        if node.type in ["class_declaration"]:
-            for child in node.children:
-                if child.type == "identifier":
-                    classes.append(source_code[child.start_byte : child.end_byte])
-
-        # Extract type definitions
-        if node.type in ["type_alias_declaration", "interface_declaration"]:
-            for child in node.children:
-                if child.type == "type_identifier":
-                    types.append(source_code[child.start_byte : child.end_byte])
+        if node_type in ("export_statement", "export_declaration"):
+            exports.append(text)
+        elif node_type in ("import_statement", "import_declaration"):
+            imports.append(text.strip())
+        elif node_type in ("function_declaration", "method_definition"):
+            child = _find_child_by_type(node, ["identifier", "property_identifier"])
+            if child:
+                functions.append(_get_node_text(child, source_code))
+        elif node_type == "class_declaration":
+            child = _find_child_by_type(node, ["identifier"])
+            if child:
+                classes.append(_get_node_text(child, source_code))
+        elif node_type in ("type_alias_declaration", "interface_declaration"):
+            child = _find_child_by_type(node, ["type_identifier"])
+            if child:
+                types.append(_get_node_text(child, source_code))
 
         for child in node.children:
             traverse(child)
 
-    traverse(root)
+    traverse(tree.root_node)
 
     return {
-        "exports": list(set([e.split()[-1] if " " in e else e for e in exports][:10])),
-        "imports": list(set([i.strip() for i in imports][:10])),
+        "exports": list(set(e.split()[-1] if " " in e else e for e in exports))[:10],
+        "imports": list(set(imports))[:10],
         "types": list(set(types)),
         "classes": list(set(classes)),
         "functions": list(set(functions)),
@@ -102,120 +108,135 @@ def analyze_ast(tree, source_code):
     }
 
 
-def analyze_call_graph(tree, source_code, ast_data):
+def analyze_call_graph(ast_data: dict) -> dict:
     """Layer 2: Call Graph - What calls what"""
     # Simplified call graph (full version would use deeper analysis)
-    call_graph = {}
-
-    for func in ast_data["functions"]:
-        call_graph[func] = {
-            "calls": [],  # Functions this calls
-            "called_by": [],  # What calls this (would need cross-file analysis)
-        }
-
+    call_graph = {
+        func: {"calls": [], "called_by": []}
+        for func in ast_data["functions"]
+    }
     return {"call_graph": call_graph, "estimated_tokens": 440}
 
 
-def analyze_control_flow(tree, source_code, ast_data):
+COMPLEXITY_NODE_TYPES = frozenset([
+    "if_statement", "switch_statement", "while_statement",
+    "for_statement", "conditional_expression"
+])
+
+
+def analyze_control_flow(tree) -> dict:
     """Layer 3: Control Flow - Branches, complexity"""
-    root = tree.root_node
     complexity = 0
-    branches = []
+    branches = set()
 
     def count_complexity(node):
         nonlocal complexity
-        # Count decision points
-        if node.type in ["if_statement", "switch_statement", "while_statement", "for_statement", "conditional_expression"]:
+        if node.type in COMPLEXITY_NODE_TYPES:
             complexity += 1
-            branches.append(node.type)
+            branches.add(node.type)
 
         for child in node.children:
             count_complexity(child)
 
-    count_complexity(root)
+    count_complexity(tree.root_node)
 
     return {
         "cyclomatic_complexity": complexity,
-        "branches": list(set(branches)),
+        "branches": list(branches),
         "estimated_tokens": 110,
     }
 
 
-def analyze_data_flow(ast_data):
+def analyze_data_flow(ast_data: dict) -> dict:
     """Layer 4: Data Flow - Inputs, outputs, side effects"""
     # Simplified data flow (full version would track variable usage)
-    data_flow = {}
-
-    for func in ast_data["functions"]:
-        data_flow[func] = {
+    data_flow = {
+        func: {
             "inputs": "TODO: parameter analysis",
             "outputs": "TODO: return type analysis",
             "side_effects": "TODO: mutation analysis",
         }
-
+        for func in ast_data["functions"]
+    }
     return {"data_flow": data_flow, "estimated_tokens": 130}
 
 
-def analyze_dependencies(filepath, ast_data):
+def analyze_dependencies(ast_data: dict) -> dict:
     """Layer 5: Program Dependency Graph - Impact analysis"""
-    # Files that would be affected if this file changes
-    impact = {
-        "direct_dependents": [],  # Would need project-wide analysis
-        "transitive_dependents": [],
-        "risk_level": "low" if len(ast_data["exports"]) < 5 else "medium",
+    risk_level = "low" if len(ast_data["exports"]) < 5 else "medium"
+
+    return {
+        "impact_analysis": {
+            "direct_dependents": [],
+            "transitive_dependents": [],
+            "risk_level": risk_level,
+        },
+        "estimated_tokens": 150
     }
 
-    return {"impact_analysis": impact, "estimated_tokens": 150}
 
-
-def analyze_file(filepath):
+def analyze_file(filepath: Path) -> dict:
     """Perform complete 5-layer analysis"""
     filepath = Path(filepath)
 
     if not filepath.exists():
-        print(f"❌ File not found: {filepath}")
+        print(f"File not found: {filepath}")
         return None
 
     parser = get_language_parser(filepath)
     if not parser:
-        print(f"⊘ Unsupported file type: {filepath.suffix}")
+        print(f"Unsupported file type: {filepath.suffix}")
         return None
 
-    # Read source code
-    with open(filepath, "r") as f:
-        source_code = f.read()
+    # Read source code (using cache for efficiency)
+    source_code = cache_manager.load_file_cached(str(filepath))
+    if not source_code:
+        print(f"Could not read file: {filepath}")
+        return None
 
     # Parse with tree-sitter
     tree = parser.parse(bytes(source_code, "utf8"))
 
-    print(f"\n📄 Analyzing: {filepath.name}")
+    print(f"\nAnalyzing: {filepath.name}")
     print("-" * 60)
 
-    # Layer 1: AST
+    # Run all 5 analysis layers
     print("  [1/5] AST analysis...")
     ast_data = analyze_ast(tree, source_code)
 
-    # Layer 2: Call Graph
     print("  [2/5] Call graph analysis...")
-    call_graph_data = analyze_call_graph(tree, source_code, ast_data)
+    call_graph_data = analyze_call_graph(ast_data)
 
-    # Layer 3: Control Flow
     print("  [3/5] Control flow analysis...")
-    control_flow_data = analyze_control_flow(tree, source_code, ast_data)
+    control_flow_data = analyze_control_flow(tree)
 
-    # Layer 4: Data Flow
     print("  [4/5] Data flow analysis...")
     data_flow_data = analyze_data_flow(ast_data)
 
-    # Layer 5: Dependencies
     print("  [5/5] Dependency analysis...")
-    dependency_data = analyze_dependencies(filepath, ast_data)
+    dependency_data = analyze_dependencies(ast_data)
 
     # Combine all layers
-    tldr = {
+    total_tldr_tokens = sum([
+        ast_data["estimated_tokens"],
+        call_graph_data["estimated_tokens"],
+        control_flow_data["estimated_tokens"],
+        data_flow_data["estimated_tokens"],
+        dependency_data["estimated_tokens"],
+    ])
+
+    raw_tokens_estimated = len(source_code) // 4
+    savings_pct = (1 - total_tldr_tokens / max(raw_tokens_estimated, 1)) * 100
+
+    print(f"\n  Analysis complete")
+    print(f"  Raw tokens: ~{raw_tokens_estimated}")
+    print(f"  TLDR tokens: ~{total_tldr_tokens}")
+    print(f"  Savings: {savings_pct:.1f}%")
+
+    return {
         "file": str(filepath),
         "size_bytes": len(source_code),
-        "raw_tokens_estimated": len(source_code) // 4,  # Rough estimate
+        "raw_tokens_estimated": raw_tokens_estimated,
         "tldr_layers": {
             "L1_AST": ast_data,
             "L2_CallGraph": call_graph_data,
@@ -223,51 +244,30 @@ def analyze_file(filepath):
             "L4_DataFlow": data_flow_data,
             "L5_Dependencies": dependency_data,
         },
-        "total_tldr_tokens": sum(
-            [
-                ast_data["estimated_tokens"],
-                call_graph_data["estimated_tokens"],
-                control_flow_data["estimated_tokens"],
-                data_flow_data["estimated_tokens"],
-                dependency_data["estimated_tokens"],
-            ]
-        ),
+        "total_tldr_tokens": total_tldr_tokens,
     }
 
-    # Calculate savings
-    savings_pct = (1 - tldr["total_tldr_tokens"] / max(tldr["raw_tokens_estimated"], 1)) * 100
 
-    print(f"\n  ✓ Analysis complete")
-    print(f"  📊 Raw tokens: ~{tldr['raw_tokens_estimated']}")
-    print(f"  📊 TLDR tokens: ~{tldr['total_tldr_tokens']}")
-    print(f"  💰 Savings: {savings_pct:.1f}%")
-
-    return tldr
-
-
-def save_tldr(tldr, output_dir=None):
+def save_tldr(tldr: dict, output_dir: Path = None):
     """Save TLDR analysis to knowledge base"""
-    if not output_dir:
-        output_dir = TLDR_DIR
-
+    output_dir = output_dir or TLDR_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Generate filename
-    original_path = Path(tldr["file"])
-    safe_name = str(original_path).replace("/", "_").replace(".", "_") + ".json"
+    # Generate safe filename
+    safe_name = tldr["file"].replace("/", "_").replace(".", "_") + ".json"
     output_file = output_dir / safe_name
 
     with open(output_file, "w") as f:
         json.dump(tldr, f, indent=2)
 
-    print(f"\n  💾 Saved: {output_file}")
+    print(f"\n  Saved: {output_file}")
 
 
 def main():
     if len(sys.argv) < 2:
         print("Usage:")
-        print(f"  {sys.argv[0]} <filepath>           # Analyze single file")
-        print(f"  {sys.argv[0]} <directory> --recursive  # Analyze directory")
+        print(f"  {sys.argv[0]} <filepath>              # Analyze single file")
+        print(f"  {sys.argv[0]} <directory> --recursive # Analyze directory")
         sys.exit(1)
 
     target = Path(sys.argv[1])
@@ -278,12 +278,10 @@ def main():
         if tldr:
             save_tldr(tldr)
     elif target.is_dir() and recursive:
-        print(f"\n🔍 Analyzing directory: {target}")
+        print(f"\nAnalyzing directory: {target}")
         print("=" * 60)
 
-        supported_exts = {".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".java"}
-        files = [f for f in target.rglob("*") if f.suffix in supported_exts]
-
+        files = [f for f in target.rglob("*") if f.suffix in SUPPORTED_EXTENSIONS]
         print(f"Found {len(files)} supported files\n")
 
         for filepath in files:
@@ -292,10 +290,10 @@ def main():
                 save_tldr(tldr)
 
         print("\n" + "=" * 60)
-        print(f"✅ Analyzed {len(files)} files")
-        print(f"📁 TLDR saved to: {TLDR_DIR}")
+        print(f"Analyzed {len(files)} files")
+        print(f"TLDR saved to: {TLDR_DIR}")
     else:
-        print(f"❌ Invalid target: {target}")
+        print(f"Invalid target: {target}")
         sys.exit(1)
 
 

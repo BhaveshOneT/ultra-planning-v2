@@ -14,7 +14,7 @@ Usage:
 import sys
 import os
 import sqlite3
-import json
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -22,74 +22,76 @@ MEMORY_DIR = Path(os.environ.get("PROJECT_MEMORY_DIR", ".project-memory"))
 DB_PATH = MEMORY_DIR / "sessions.db"
 
 
+@contextmanager
+def get_db_connection():
+    """Context manager for database connections"""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
 def init_database():
     """Initialize SQLite database with schema"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
-    # Sessions table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS sessions (
-            id TEXT PRIMARY KEY,
-            terminal TEXT NOT NULL,
-            started_at TIMESTAMP NOT NULL,
-            ended_at TIMESTAMP,
-            last_handoff TEXT,
-            knowledge_hash TEXT,
-            status TEXT DEFAULT 'active'
-        )
-    """)
+        # Sessions table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY,
+                terminal TEXT NOT NULL,
+                started_at TIMESTAMP NOT NULL,
+                ended_at TIMESTAMP,
+                last_handoff TEXT,
+                knowledge_hash TEXT,
+                status TEXT DEFAULT 'active'
+            )
+        """)
 
-    # File claims table (distributed locking)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS file_claims (
-            file_path TEXT PRIMARY KEY,
-            session_id TEXT NOT NULL,
-            claimed_at TIMESTAMP NOT NULL,
-            intent TEXT,
-            FOREIGN KEY (session_id) REFERENCES sessions(id)
-        )
-    """)
+        # File claims table (distributed locking)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS file_claims (
+                file_path TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                claimed_at TIMESTAMP NOT NULL,
+                intent TEXT,
+                FOREIGN KEY (session_id) REFERENCES sessions(id)
+            )
+        """)
 
-    # Handoffs table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS handoffs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            created_at TIMESTAMP NOT NULL,
-            yaml_path TEXT NOT NULL,
-            task_name TEXT,
-            status TEXT,
-            FOREIGN KEY (session_id) REFERENCES sessions(id)
-        )
-    """)
+        # Handoffs table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS handoffs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL,
+                yaml_path TEXT NOT NULL,
+                task_name TEXT,
+                status TEXT,
+                FOREIGN KEY (session_id) REFERENCES sessions(id)
+            )
+        """)
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
-    print(f"✓ Database initialized: {DB_PATH}")
+    print(f"Database initialized: {DB_PATH}")
 
 
 def register_session(terminal="laptop"):
     """Register a new session"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
     session_id = f"sess_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{terminal}"
     now = datetime.now().isoformat()
 
-    cursor.execute(
-        """
-        INSERT INTO sessions (id, terminal, started_at, status)
-        VALUES (?, ?, ?, 'active')
-    """,
-        (session_id, terminal, now),
-    )
+    with get_db_connection() as conn:
+        conn.execute(
+            "INSERT INTO sessions (id, terminal, started_at, status) VALUES (?, ?, ?, 'active')",
+            (session_id, terminal, now),
+        )
+        conn.commit()
 
-    conn.commit()
-    conn.close()
-
-    print(f"✓ Session registered: {session_id}")
+    print(f"Session registered: {session_id}")
     print(f"  Terminal: {terminal}")
     print(f"  Started: {now}")
 
@@ -98,37 +100,27 @@ def register_session(terminal="laptop"):
 
 def list_sessions():
     """List all sessions"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT id, terminal, started_at, status, last_handoff
-        FROM sessions
-        ORDER BY started_at DESC
-        LIMIT 20
-    """)
-
-    sessions = cursor.fetchall()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.execute("""
+            SELECT id, terminal, started_at, status, last_handoff
+            FROM sessions
+            ORDER BY started_at DESC
+            LIMIT 20
+        """)
+        sessions = cursor.fetchall()
 
     if not sessions:
         print("No sessions found")
         return
 
-    print("\n📋 Recent Sessions:")
+    print("\nRecent Sessions:")
     print("-" * 80)
-    print(
-        f"{'Session ID':<35} {'Terminal':<12} {'Started':<20} {'Status':<10}"
-    )
+    print(f"{'Session ID':<35} {'Terminal':<12} {'Started':<20} {'Status':<10}")
     print("-" * 80)
 
-    for session in sessions:
-        session_id, terminal, started_at, status, handoff = session
-        # Truncate session ID for display
+    for session_id, terminal, started_at, status, _ in sessions:
         short_id = session_id[-25:] if len(session_id) > 25 else session_id
-        print(
-            f"{short_id:<35} {terminal:<12} {started_at[:19]:<20} {status:<10}"
-        )
+        print(f"{short_id:<35} {terminal:<12} {started_at[:19]:<20} {status:<10}")
 
     print("-" * 80)
     print(f"Total: {len(sessions)} sessions")
@@ -136,18 +128,14 @@ def list_sessions():
 
 def get_latest_session():
     """Get the most recent session"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT id, terminal, started_at, last_handoff
-        FROM sessions
-        ORDER BY started_at DESC
-        LIMIT 1
-    """)
-
-    session = cursor.fetchone()
-    conn.close()
+    with get_db_connection() as conn:
+        cursor = conn.execute("""
+            SELECT id, terminal, started_at, last_handoff
+            FROM sessions
+            ORDER BY started_at DESC
+            LIMIT 1
+        """)
+        session = cursor.fetchone()
 
     if not session:
         print("No sessions found")
@@ -155,7 +143,7 @@ def get_latest_session():
 
     session_id, terminal, started_at, handoff = session
 
-    print("\n📌 Latest Session:")
+    print("\nLatest Session:")
     print("-" * 60)
     print(f"  ID: {session_id}")
     print(f"  Terminal: {terminal}")
@@ -167,46 +155,39 @@ def get_latest_session():
 
 def claim_file(filepath, intent, session_id=None):
     """Claim a file (distributed locking)"""
+    # Get session ID if not provided
     if not session_id:
-        # Get latest session
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM sessions ORDER BY started_at DESC LIMIT 1")
-        result = cursor.fetchone()
-        conn.close()
+        with get_db_connection() as conn:
+            result = conn.execute(
+                "SELECT id FROM sessions ORDER BY started_at DESC LIMIT 1"
+            ).fetchone()
 
         if not result:
-            print("❌ No active session found. Register a session first.")
+            print("Error: No active session found. Register a session first.")
             return
 
         session_id = result[0]
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    with get_db_connection() as conn:
+        # Check if file is already claimed
+        existing = conn.execute(
+            "SELECT session_id FROM file_claims WHERE file_path = ?",
+            (filepath,)
+        ).fetchone()
 
-    # Check if file is already claimed
-    cursor.execute("SELECT session_id FROM file_claims WHERE file_path = ?", (filepath,))
-    existing = cursor.fetchone()
+        if existing:
+            print(f"Warning: File already claimed by: {existing[0]}")
+            print(f"   Intent: {intent}")
+            return
 
-    if existing:
-        print(f"⚠️  File already claimed by: {existing[0]}")
-        print(f"   Intent: {intent}")
-        return
+        # Claim the file
+        conn.execute(
+            "INSERT INTO file_claims (file_path, session_id, claimed_at, intent) VALUES (?, ?, ?, ?)",
+            (filepath, session_id, datetime.now().isoformat(), intent),
+        )
+        conn.commit()
 
-    # Claim the file
-    now = datetime.now().isoformat()
-    cursor.execute(
-        """
-        INSERT INTO file_claims (file_path, session_id, claimed_at, intent)
-        VALUES (?, ?, ?, ?)
-    """,
-        (filepath, session_id, now, intent),
-    )
-
-    conn.commit()
-    conn.close()
-
-    print(f"✓ File claimed: {filepath}")
+    print(f"File claimed: {filepath}")
     print(f"  Session: {session_id}")
     print(f"  Intent: {intent}")
 

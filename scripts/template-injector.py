@@ -104,112 +104,67 @@ def extract_keywords(task_name: str) -> List[str]:
         return keywords
 
 
-def search_patterns(keywords: List[str], threshold: float = None) -> List[Dict]:
-    """Search knowledge/patterns.md for relevant patterns"""
-    # Load threshold from config if not provided
+def search_knowledge_file(
+    filename: str,
+    section_prefix: str,
+    keywords: List[str],
+    threshold: float = None,
+    max_results: int = 3
+) -> List[Dict]:
+    """
+    Search a knowledge file for relevant sections.
+
+    Args:
+        filename: Name of the file in KNOWLEDGE_DIR (e.g., 'patterns.md')
+        section_prefix: The section header prefix (e.g., '## Pattern:')
+        keywords: List of keywords to match against
+        threshold: Minimum relevance score (default from config)
+        max_results: Maximum number of results to return
+
+    Returns:
+        List of matching sections sorted by relevance
+    """
     if threshold is None:
         threshold = config_loader.get('template_injection.relevance_threshold', 0.3)
 
-    patterns_file = KNOWLEDGE_DIR / 'patterns.md'
-
-    if not patterns_file.exists():
+    file_path = KNOWLEDGE_DIR / filename
+    if not file_path.exists():
         return []
 
-    # Use cached file loading (avoid redundant reads)
-    content = cache_manager.load_file_cached(str(patterns_file))
-
-    # Split into sections (## Pattern: ...)
-    sections = re.split(r'\n## Pattern:', content)
+    content = cache_manager.load_file_cached(str(file_path))
+    sections = re.split(r'\n' + re.escape(section_prefix), content)
 
     results = []
-    for section in sections[1:]:  # Skip first empty split
-        # Calculate relevance score (simple keyword matching)
+    for section in sections[1:]:
         section_lower = section.lower()
         matches = sum(1 for kw in keywords if kw in section_lower)
         score = matches / len(keywords) if keywords else 0
 
         if score >= threshold:
-            # Extract pattern name
             first_line = section.split('\n')[0].strip()
             results.append({
                 'name': first_line,
                 'score': score,
-                'content': '## Pattern: ' + section.strip()
+                'content': section_prefix + ' ' + section.strip()
             })
 
-    # Sort by relevance
     results.sort(key=lambda x: x['score'], reverse=True)
-    return results[:3]  # Top 3
+    return results[:max_results]
+
+
+def search_patterns(keywords: List[str], threshold: float = None) -> List[Dict]:
+    """Search knowledge/patterns.md for relevant patterns"""
+    return search_knowledge_file('patterns.md', '## Pattern:', keywords, threshold, max_results=3)
 
 
 def search_failures(keywords: List[str], threshold: float = None) -> List[Dict]:
     """Search knowledge/failures.md for relevant errors to avoid"""
-    # Load threshold from config if not provided
-    if threshold is None:
-        threshold = config_loader.get('template_injection.relevance_threshold', 0.3)
-
-    failures_file = KNOWLEDGE_DIR / 'failures.md'
-
-    if not failures_file.exists():
-        return []
-
-    # Use cached file loading (avoid redundant reads)
-    content = cache_manager.load_file_cached(str(failures_file))
-
-    # Split into sections (## Error: ...)
-    sections = re.split(r'\n## Error:', content)
-
-    results = []
-    for section in sections[1:]:
-        section_lower = section.lower()
-        matches = sum(1 for kw in keywords if kw in section_lower)
-        score = matches / len(keywords) if keywords else 0
-
-        if score >= threshold:
-            first_line = section.split('\n')[0].strip()
-            results.append({
-                'name': first_line,
-                'score': score,
-                'content': '## Error: ' + section.strip()
-            })
-
-    results.sort(key=lambda x: x['score'], reverse=True)
-    return results[:3]
+    return search_knowledge_file('failures.md', '## Error:', keywords, threshold, max_results=3)
 
 
 def search_decisions(keywords: List[str], threshold: float = None) -> List[Dict]:
     """Search knowledge/decisions.md for relevant architectural choices"""
-    # Load threshold from config if not provided
-    if threshold is None:
-        threshold = config_loader.get('template_injection.relevance_threshold', 0.3)
-
-    decisions_file = KNOWLEDGE_DIR / 'decisions.md'
-
-    if not decisions_file.exists():
-        return []
-
-    # Use cached file loading (avoid redundant reads)
-    content = cache_manager.load_file_cached(str(decisions_file))
-
-    # Split into sections (## Decision: ...)
-    sections = re.split(r'\n## Decision:', content)
-
-    results = []
-    for section in sections[1:]:
-        section_lower = section.lower()
-        matches = sum(1 for kw in keywords if kw in section_lower)
-        score = matches / len(keywords) if keywords else 0
-
-        if score >= threshold:
-            first_line = section.split('\n')[0].strip()
-            results.append({
-                'name': first_line,
-                'score': score,
-                'content': '## Decision: ' + section.strip()
-            })
-
-    results.sort(key=lambda x: x['score'], reverse=True)
-    return results[:2]
+    return search_knowledge_file('decisions.md', '## Decision:', keywords, threshold, max_results=2)
 
 
 def find_similar_archived_tasks(task_name: str) -> List[Path]:

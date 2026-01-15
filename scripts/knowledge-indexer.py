@@ -85,36 +85,26 @@ def extract_keywords_from_text(text: str) -> Set[str]:
 
 
 def build_keyword_index() -> Dict[str, List[tuple]]:
-    """Build keyword → [(file, section_title)] mapping"""
+    """Build keyword -> [(file, section_title)] mapping"""
     keyword_index = defaultdict(list)
 
-    knowledge_files = [
-        ('patterns.md', r'\n## Pattern:'),
-        ('failures.md', r'\n## Error:'),
-        ('decisions.md', r'\n## Decision:'),
-        ('gotchas.md', r'\n## Gotcha:'),
-    ]
+    knowledge_files = ['patterns.md', 'failures.md', 'decisions.md', 'gotchas.md']
 
-    for filename, pattern in knowledge_files:
+    for filename in knowledge_files:
         file_path = KNOWLEDGE_DIR / filename
-
         if not file_path.exists():
             continue
 
-        # Use cached file loading
+        section_prefix = cache_manager.get_section_prefix(filename)
         content = cache_manager.load_file_cached(str(file_path))
+        pattern = r'\n' + re.escape(section_prefix)
 
-        # Split into sections
         sections = re.split(pattern, content)
 
-        for i, section in enumerate(sections[1:], 1):  # Skip first empty split
-            # Get section title (first line)
+        for section in sections[1:]:
             title = section.split('\n')[0].strip()
-
-            # Extract keywords from section
             keywords = extract_keywords_from_text(section)
 
-            # Add to index
             for keyword in keywords:
                 keyword_index[keyword].append((filename, title))
 

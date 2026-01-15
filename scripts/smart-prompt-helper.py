@@ -5,12 +5,14 @@ Generate extraction prompts for Claude Code to see and act on
 Uses existing Claude Code subscription - zero extra API costs!
 """
 
-import os
 import sys
 import re
 from pathlib import Path
 from datetime import datetime
 
+# Add scripts dir to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+import cache_manager
 
 # Get project memory directory
 MEMORY_DIR = Path(__file__).parent.parent
@@ -20,81 +22,62 @@ KNOWLEDGE_DIR = MEMORY_DIR / 'knowledge'
 
 def count_discoveries(context_file: Path) -> int:
     """Count discoveries/findings in context.md"""
-    if not context_file.exists():
+    content = cache_manager.load_file_cached(str(context_file))
+    if not content:
         return 0
 
-    with open(context_file, 'r') as f:
-        content = f.read()
-
-    # Count sections that look like discoveries
-    discoveries = 0
-
-    # Pattern 1: Numbered findings
-    discoveries += len(re.findall(r'^\d+\.', content, re.MULTILINE))
-
-    # Pattern 2: Bullet points with insights
-    discoveries += len(re.findall(r'^[-*]\s+.{20,}', content, re.MULTILINE))
-
-    # Pattern 3: "Discovered:", "Found:", "Learned:"
-    discoveries += len(re.findall(r'(Discovered|Found|Learned):', content, re.IGNORECASE))
-
-    return discoveries
+    # Count sections that look like discoveries using multiple patterns
+    return (
+        len(re.findall(r'^\d+\.', content, re.MULTILINE)) +
+        len(re.findall(r'^[-*]\s+.{20,}', content, re.MULTILINE)) +
+        len(re.findall(r'(Discovered|Found|Learned):', content, re.IGNORECASE))
+    )
 
 
 def count_completed_phases(task_plan_file: Path) -> int:
     """Count completed phases in task_plan.md"""
-    if not task_plan_file.exists():
+    content = cache_manager.load_file_cached(str(task_plan_file))
+    if not content:
         return 0
-
-    with open(task_plan_file, 'r') as f:
-        content = f.read()
 
     # Count completed checkboxes in phases section
     phases_match = re.search(r'## Phases\n(.+?)(?=\n##|\Z)', content, re.DOTALL)
     if not phases_match:
         return 0
 
-    phases_text = phases_match.group(1)
-    completed = len(re.findall(r'- \[x\]', phases_text, re.IGNORECASE))
-
-    return completed
+    return len(re.findall(r'- \[x\]', phases_match.group(1), re.IGNORECASE))
 
 
 def count_errors_in_table(task_plan_file: Path) -> int:
     """Count errors in the error log table"""
-    if not task_plan_file.exists():
+    content = cache_manager.load_file_cached(str(task_plan_file))
+    if not content:
         return 0
-
-    with open(task_plan_file, 'r') as f:
-        content = f.read()
 
     # Find error log table
     table_match = re.search(r'## Live Error Log.*?\n\|.*?\n\|[-|]+\|(.*?)(##|\Z)', content, re.DOTALL)
     if not table_match:
         return 0
 
-    table_content = table_match.group(1)
-
     # Count rows (skip empty lines)
-    rows = [line for line in table_content.split('\n') if line.strip() and line.startswith('|')]
-    return len(rows)
+    return sum(1 for line in table_match.group(1).split('\n')
+               if line.strip() and line.startswith('|'))
 
 
 def check_recent_commits() -> int:
     """Check number of commits since session start"""
+    import subprocess
+
     try:
-        import subprocess
-        # Get commits from last 24 hours
         result = subprocess.run(
-            ['git', 'log', '--since="24 hours ago"', '--oneline'],
+            ['git', 'log', '--since=24 hours ago', '--oneline'],
             capture_output=True,
             text=True,
-            cwd=MEMORY_DIR.parent  # Project root
+            cwd=MEMORY_DIR.parent
         )
         if result.returncode == 0:
-            commits = [line for line in result.stdout.split('\n') if line.strip()]
-            return len(commits)
-    except:
+            return sum(1 for line in result.stdout.split('\n') if line.strip())
+    except (subprocess.SubprocessError, FileNotFoundError):
         pass
 
     return 0
@@ -177,20 +160,18 @@ Once you've extracted learnings:
 
 def should_trigger_extraction(context_path: Path, task_plan_path: Path) -> tuple[bool, str]:
     """
-    Determine if extraction should be triggered
+    Determine if extraction should be triggered.
     Returns: (should_trigger, reason)
     """
     discoveries = count_discoveries(context_path)
-    completed_phases = count_completed_phases(task_plan_path)
-    errors = count_errors_in_table(task_plan_path)
-
-    # Trigger conditions (2-action rule and phase completion)
     if discoveries >= 2:
         return (True, f"{discoveries} discoveries documented (2-action rule)")
 
+    completed_phases = count_completed_phases(task_plan_path)
     if completed_phases >= 1:
         return (True, f"{completed_phases} phase(s) completed")
 
+    errors = count_errors_in_table(task_plan_path)
     if errors >= 2:
         return (True, f"{errors} errors encountered")
 
@@ -205,7 +186,7 @@ def create_extraction_prompt() -> None:
 
     # Check if already exists
     if prompt_file.exists():
-        print("ℹ️  Extraction prompt already exists")
+        print("Extraction prompt already exists")
         print(f"   File: {prompt_file}")
         return
 
@@ -213,12 +194,12 @@ def create_extraction_prompt() -> None:
     should_trigger, reason = should_trigger_extraction(context_path, task_plan_path)
 
     if not should_trigger:
-        print(f"⏸️  Extraction not triggered yet: {reason}")
+        print(f"Extraction not triggered yet: {reason}")
         print()
-        print("   Triggers:")
-        print("   • 2+ discoveries in context.md")
-        print("   • 1+ completed phases")
-        print("   • 2+ errors documented")
+        print("Triggers:")
+        print("   - 2+ discoveries in context.md")
+        print("   - 1+ completed phases")
+        print("   - 2+ errors documented")
         return
 
     # Generate prompt
@@ -228,18 +209,18 @@ def create_extraction_prompt() -> None:
     with open(prompt_file, 'w') as f:
         f.write(prompt)
 
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    print("💡 KNOWLEDGE EXTRACTION PROMPT CREATED")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("=" * 40)
+    print("KNOWLEDGE EXTRACTION PROMPT CREATED")
+    print("=" * 40)
     print()
-    print(f"✅ Trigger: {reason}")
-    print(f"📄 File: {prompt_file}")
+    print(f"Trigger: {reason}")
+    print(f"File: {prompt_file}")
     print()
     print("Ask Claude Code to:")
     print('  "Read active/.extraction_needed.txt and extract the learnings"')
     print()
     print("Or Claude Code will see it automatically in context!")
-    print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    print("=" * 40)
 
 
 def check_extraction_status() -> None:
@@ -247,23 +228,23 @@ def check_extraction_status() -> None:
     prompt_file = ACTIVE_DIR / '.extraction_needed.txt'
 
     if prompt_file.exists():
-        print("⚠️  Extraction prompt exists but not yet processed")
+        print("Extraction prompt exists but not yet processed")
         print(f"   File: {prompt_file}")
         print()
         print("Ask Claude Code to:")
         print('  "Read active/.extraction_needed.txt and extract the learnings"')
+        return
+
+    context_path = ACTIVE_DIR / 'context.md'
+    task_plan_path = ACTIVE_DIR / 'task_plan.md'
+    should_trigger, reason = should_trigger_extraction(context_path, task_plan_path)
+
+    if should_trigger:
+        print(f"Extraction ready: {reason}")
+        print()
+        print("Run: python3 scripts/smart-prompt-helper.py --create")
     else:
-        context_path = ACTIVE_DIR / 'context.md'
-        task_plan_path = ACTIVE_DIR / 'task_plan.md'
-
-        should_trigger, reason = should_trigger_extraction(context_path, task_plan_path)
-
-        if should_trigger:
-            print(f"✅ Extraction ready: {reason}")
-            print()
-            print("Run: python3 scripts/smart-prompt-helper.py --create")
-        else:
-            print(f"✅ No extraction needed yet: {reason}")
+        print(f"No extraction needed yet: {reason}")
 
 
 def main():

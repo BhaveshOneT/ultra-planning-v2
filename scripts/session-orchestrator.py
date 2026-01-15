@@ -4,15 +4,13 @@ Ultra-Planning V3: Session Orchestrator
 Master controller coordinating all automation modules
 """
 
-import os
 import sys
 import time
 import subprocess
 import signal
 from pathlib import Path
-from datetime import datetime
 from typing import Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 # Get project memory directory
 MEMORY_DIR = Path(__file__).parent.parent
@@ -28,82 +26,106 @@ class SessionOrchestrator:
         self.file_watcher_process: Optional[subprocess.Popen] = None
         self.task_name: Optional[str] = None
 
-    def _inject_templates_task(self, task_name: str) -> Tuple[bool, str]:
-        """Run template injection (for parallel execution)"""
+    def _run_script(self, script_name: str, args: list = None, timeout: int = None) -> Tuple[bool, str]:
+        """Run a script and return (success, output/message)"""
+        cmd = [sys.executable, str(SCRIPTS_DIR / script_name)]
+        if args:
+            cmd.extend(args)
+
         try:
             result = subprocess.run(
-                [sys.executable, str(SCRIPTS_DIR / 'template-injector.py'), task_name],
-                cwd=MEMORY_DIR,
-                capture_output=True,
-                text=True
-            )
-
-            if result.returncode == 0:
-                return (True, result.stdout)
-            else:
-                return (False, "Template injection had issues (continuing anyway)")
-        except Exception as e:
-            return (False, f"Template injection failed: {e}")
-
-    def _check_embeddings_task(self) -> Tuple[bool, str]:
-        """Check embeddings status (for parallel execution)"""
-        try:
-            result = subprocess.run(
-                [sys.executable, str(SCRIPTS_DIR / 'auto-embedder.py'), '--status'],
+                cmd,
                 cwd=MEMORY_DIR,
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=timeout
             )
+            return (result.returncode == 0, result.stdout)
+        except subprocess.TimeoutExpired:
+            return (False, f"{script_name} timed out")
+        except Exception as e:
+            return (False, f"{script_name} failed: {e}")
 
-            if 'Needs embedding' in result.stdout:
-                return (False, "Embeddings need update (run auto-embedder.py --embed)")
-            else:
-                return (True, "Embeddings up to date")
-        except:
+    def _inject_templates_task(self, task_name: str) -> Tuple[bool, str]:
+        """Run template injection (for parallel execution)"""
+        success, output = self._run_script('template-injector.py', [task_name])
+        if success:
+            return (True, output)
+        return (False, "Template injection had issues (continuing anyway)")
+
+    def _check_embeddings_task(self) -> Tuple[bool, str]:
+        """Check embeddings status (for parallel execution)"""
+        success, output = self._run_script('auto-embedder.py', ['--status'], timeout=5)
+        if not success:
             return (False, "Auto-embedder not available (install: pip install sentence-transformers numpy)")
+        if 'Needs embedding' in output:
+            return (False, "Embeddings need update (run auto-embedder.py --embed)")
+        return (True, "Embeddings up to date")
 
 
     def start_session(self, task_name: str):
         """Start session with full automation"""
         self.task_name = task_name
 
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print("🚀 Ultra-Planning V3: Starting Session")
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("=" * 50)
+        print("Starting Session")
+        print("=" * 50)
         print()
-        print(f"📝 Task: {task_name}")
+        print(f"Task: {task_name}")
         print()
 
         # Run Steps 1 & 2 in parallel (independent tasks)
-        print("⚡ Running startup tasks in parallel...")
+        print("Running startup tasks in parallel...")
         print()
 
         with ThreadPoolExecutor(max_workers=2) as executor:
-            # Submit both tasks
             future_templates = executor.submit(self._inject_templates_task, task_name)
             future_embeddings = executor.submit(self._check_embeddings_task)
 
-            # Wait for template injection (Step 1)
-            print("📚 Step 1/4: Injecting past knowledge...")
+            # Step 1: Template injection
+            print("Step 1/4: Injecting past knowledge...")
             success, message = future_templates.result()
-            if success:
-                print(message)
-            else:
-                print(f"   ⚠️  {message}")
+            print(message if success else f"   Warning: {message}")
 
-            # Wait for embeddings check (Step 2)
-            print("🔮 Step 2/4: Checking semantic search readiness...")
+            # Step 2: Embeddings check
+            print("Step 2/4: Checking semantic search readiness...")
             success, message = future_embeddings.result()
-            if success:
-                print(f"   ✓ {message}")
-            else:
-                print(f"   ⚠️  {message}")
+            print(f"   {message}" if success else f"   Warning: {message}")
 
         print()
 
-        # 3. Start file watcher (background)
-        print("👁️  Step 3/4: Starting file watcher...")
+        # Step 3: Start file watcher (background)
+        print("Step 3/4: Starting file watcher...")
+        self._start_file_watcher()
+        print()
+
+        # Step 4: Check previous session
+        print("Step 4/4: Checking for previous session...")
+        handoff_file = HANDOFFS_DIR / 'latest.yaml'
+        if handoff_file.exists():
+            print(f"   Previous session handoff found: {handoff_file}")
+        else:
+            print("   No previous session (fresh start)")
+
+        print()
+        print("=" * 50)
+        print("Session ready! Automation active.")
+        print("=" * 50)
+        print()
+        print("What's automated:")
+        print("   - Template pre-filled with past knowledge")
+        print("   - File watcher tracking progress in real-time")
+        print("   - Error monitor available (pipe errors through it)")
+        print("   - Smart extraction triggers on 2+ discoveries")
+        print()
+        print("Tips:")
+        print("   - Edit your plan: vim active/task_plan.md")
+        print("   - Capture errors: npm test 2>&1 | scripts/error-monitor.py")
+        print("   - Check extraction: scripts/smart-prompt-helper.py")
+        print()
+
+    def _start_file_watcher(self):
+        """Start the file watcher background process"""
         try:
             self.file_watcher_process = subprocess.Popen(
                 [sys.executable, str(SCRIPTS_DIR / 'file-watcher.py')],
@@ -112,152 +134,90 @@ class SessionOrchestrator:
                 stderr=subprocess.STDOUT,
                 text=True
             )
-
-            # Give it a moment to start
             time.sleep(1)
 
             if self.file_watcher_process.poll() is None:
-                print("   ✓ File watcher started (monitoring in background)")
+                print("   File watcher started (monitoring in background)")
             else:
-                print("   ⚠️  File watcher failed to start (install: pip install watchdog)")
+                print("   File watcher failed to start (install: pip install watchdog)")
                 self.file_watcher_process = None
         except Exception as e:
-            print(f"   ⚠️  File watcher not available: {e}")
+            print(f"   File watcher not available: {e}")
             self.file_watcher_process = None
-
-        print()
-
-        # 4. Load previous session context (if exists)
-        print("🔄 Step 4/4: Checking for previous session...")
-        handoff_file = HANDOFFS_DIR / 'latest.yaml'
-
-        if handoff_file.exists():
-            print("   ✓ Previous session handoff found")
-            print(f"     File: {handoff_file}")
-            print("     (Review for context continuity)")
-        else:
-            print("   ℹ️  No previous session (fresh start)")
-
-        print()
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print("✅ Session ready! Automation active.")
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print()
-        print("🎯 What's automated:")
-        print("   • Template pre-filled with past knowledge")
-        print("   • File watcher tracking progress in real-time")
-        print("   • Error monitor available (pipe errors through it)")
-        print("   • Smart extraction triggers on 2+ discoveries")
-        print()
-        print("💡 Tips:")
-        print("   • Edit your plan: vim active/task_plan.md")
-        print("   • Capture errors: npm test 2>&1 | scripts/error-monitor.py")
-        print("   • Check extraction: scripts/smart-prompt-helper.py")
-        print()
-        print("Just code - the system handles the rest! 🚀")
-        print()
 
     def on_idle(self):
         """Handle idle session - trigger extraction"""
         print()
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print("⏰ Session idle detected, processing learnings...")
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("=" * 50)
+        print("Session idle detected, processing learnings...")
+        print("=" * 50)
         print()
 
         # Check if extraction needed
-        print("🧠 Checking if extraction needed...")
-        try:
-            result = subprocess.run(
-                [sys.executable, str(SCRIPTS_DIR / 'smart-prompt-helper.py'), '--check'],
-                cwd=MEMORY_DIR,
-                capture_output=True,
-                text=True
-            )
-            print(result.stdout)
-        except Exception as e:
-            print(f"   ⚠️  Extraction check failed: {e}")
-
+        print("Checking if extraction needed...")
+        success, output = self._run_script('smart-prompt-helper.py', ['--check'])
+        if success:
+            print(output)
+        else:
+            print(f"   Warning: Extraction check failed")
         print()
 
         # Update knowledge index
-        print("📇 Updating knowledge index...")
-        try:
-            result = subprocess.run(
-                [sys.executable, str(SCRIPTS_DIR / 'knowledge-indexer.py')],
-                cwd=MEMORY_DIR,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            if result.returncode == 0:
-                print("   ✓ Index updated")
-            else:
-                print("   ⚠️  Index update had issues")
-        except Exception as e:
-            print(f"   ⚠️  Index update failed: {e}")
-
+        print("Updating knowledge index...")
+        success, _ = self._run_script('knowledge-indexer.py', timeout=30)
+        print("   Done" if success else "   Index update had issues")
         print()
 
         # Check embeddings
-        print("🔮 Checking vector embeddings...")
-        try:
-            result = subprocess.run(
-                [sys.executable, str(SCRIPTS_DIR / 'auto-embedder.py'), '--embed'],
-                cwd=MEMORY_DIR,
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
-
-            if 'up to date' in result.stdout.lower():
-                print("   ✓ Embeddings current")
-            elif 'Error' not in result.stdout:
-                print("   ✓ Embeddings updated")
-            else:
-                print("   ℹ️  Embeddings not available (optional)")
-        except:
-            print("   ℹ️  Auto-embedder not available (optional)")
+        print("Checking vector embeddings...")
+        success, output = self._run_script('auto-embedder.py', ['--embed'], timeout=60)
+        if not success:
+            print("   Auto-embedder not available (optional)")
+        elif 'up to date' in output.lower():
+            print("   Embeddings current")
+        elif 'Error' not in output:
+            print("   Embeddings updated")
+        else:
+            print("   Embeddings not available (optional)")
 
         print()
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print("✅ Idle processing complete!")
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("=" * 50)
+        print("Idle processing complete!")
+        print("=" * 50)
         print()
 
     def end_session(self):
         """Clean shutdown with final extraction"""
         print()
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print("👋 Ending session...")
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("=" * 50)
+        print("Ending session...")
+        print("=" * 50)
         print()
 
         # Final extraction
-        print("🧠 Final extraction pass...")
+        print("Final extraction pass...")
         self.on_idle()
 
         # Stop file watcher
         if self.file_watcher_process:
-            print("🛑 Stopping file watcher...")
+            print("Stopping file watcher...")
             try:
                 self.file_watcher_process.terminate()
                 self.file_watcher_process.wait(timeout=5)
-                print("   ✓ File watcher stopped")
-            except:
+                print("   File watcher stopped")
+            except subprocess.TimeoutExpired:
                 self.file_watcher_process.kill()
-                print("   ✓ File watcher stopped (forced)")
+                print("   File watcher stopped (forced)")
 
         print()
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-        print("✅ Session ended. Knowledge preserved!")
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("=" * 50)
+        print("Session ended. Knowledge preserved!")
+        print("=" * 50)
         print()
-        print("💡 Next steps:")
-        print("   • Review active/task_plan.md for completion")
-        print("   • Run: scripts/archive-task.sh (when task complete)")
-        print("   • Or continue next session with same context")
+        print("Next steps:")
+        print("   - Review active/task_plan.md for completion")
+        print("   - Run: scripts/archive-task.sh (when task complete)")
+        print("   - Or continue next session with same context")
         print()
 
     def signal_handler(self, signum, frame):
