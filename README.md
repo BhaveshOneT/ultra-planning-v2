@@ -1,4 +1,4 @@
-# Ultra-Planning V3: Zero-Manual Intelligence System
+# Context Engine: Zero-Manual Intelligence System
 
 > **You code. System learns. Knowledge compounds. Zero extra costs.**
 
@@ -9,12 +9,12 @@
 
 ---
 
-## 🎉 **NEW: V3 Released!**
+## 🎉 **NEW: Latest Release!**
 
-**Ultra-Planning V3** transforms the system from "assisted documentation" to "invisible intelligence."
+**Context Engine** is an invisible intelligence system that learns automatically while you code.
 
-### What's New:
-- 🤖 **95% Automated** (vs 60% manual in V2)
+### Key Features:
+- 🤖 **95% Automated** - Minimal manual intervention required
 - ⚡ **Template Auto-Fill** - Session start: 5 min → 30 sec
 - 🔥 **Error Auto-Capture** - Errors documented automatically from terminal
 - 🧠 **Claude Code Integration** - Pattern extraction using existing subscription (zero extra API costs!)
@@ -22,7 +22,7 @@
 - 🔮 **Always-Fresh Search** - Vector embeddings auto-update
 - 📇 **Auto-Generated Index** - Cross-references with semantic similarity
 
-**[→ See Full V3 Features Documentation](V3_FEATURES.md)**
+**[→ See Full Features Documentation](V3_FEATURES.md)**
 
 ### 🎨 **Latest: Codebase Refactoring (Jan 2026)**
 - 🧹 **239 Lines Removed** - Eliminated all code duplication
@@ -31,7 +31,7 @@
 - 🛡️ **Better Resource Management** - Context managers for DB connections
 - 🔧 **Easier Maintenance** - Adding new features now requires 1 change, not 6+
 
-### Quick Start V3:
+### Quick Start:
 ```bash
 # Install dependencies (one-time)
 ./scripts/install-v3.sh
@@ -46,11 +46,12 @@
 
 ## 🎯 What Is This?
 
-Ultra-Planning V2 is a revolutionary memory system for AI agents that combines:
+**Context Engine** is a revolutionary memory and intelligence system for AI agents that combines:
 
-1. **planning-with-files** - State management during execution (Manus AI principles)
-2. **compound-engineering** - Knowledge accumulation philosophy
-3. **Continuous-Claude-v3** - Automatic learning, vectors, YAML, TLDR (3.1k ⭐)
+1. **Filesystem-based State Management** - Persistent memory across sessions
+2. **Knowledge Compounding** - Automatic learning and pattern extraction
+3. **Semantic Search** - Vector embeddings for intelligent knowledge retrieval
+4. **Clean Architecture** - DRY principles, centralized caching, maintainable codebase
 
 **Result:** An AI agent that never forgets, learns while you're away, and compounds intelligence exponentially.
 
@@ -315,7 +316,7 @@ python3 scripts/tldr-code.py src/ --recursive
 
 ## 📊 Benefits: Before vs After
 
-| Metric | Without Ultra-Planning | With V3 | Improvement |
+| Metric | Without Context Engine | With Context Engine | Improvement |
 |--------|----------------------|---------|-------------|
 | Knowledge capture | Manual (10 min) | Automatic (15 sec) | **40x faster** |
 | Context format | Markdown (2,500 tokens) | YAML (250 tokens) | **10x savings** |
@@ -418,25 +419,22 @@ if action_failed:
 
 ## 🤝 Credits & Inspiration
 
-This system combines concepts from:
+This system is built on proven concepts:
 
-- **planning-with-files** by OthmanAdi - Manus-style filesystem memory
-- **compound-engineering** (one-thousand plugins) - Knowledge accumulation
-- **Continuous-Claude-v3** by parcadei - Daemon, vectors, YAML, TLDR (MIT, 3.1k ⭐)
-
-Original research:
-- Manus AI context engineering principles ($2B Meta acquisition)
-- BGE-large embeddings (BAAI)
-- Tree-sitter structural analysis
+- **Filesystem-based Memory** - Manus AI context engineering principles
+- **Knowledge Compounding** - Continuous learning and pattern extraction
+- **Semantic Search** - BGE-large embeddings (BAAI)
+- **Code Analysis** - Tree-sitter structural analysis
+- **Clean Code Principles** - DRY, single source of truth, context managers
 
 ---
 
 ## 📖 Further Reading
 
-Located in same directory:
-- `ultra-planning-walkthrough.md` - Full 3-session example walkthrough
-- `ultra-planning-v2-enhanced.md` - Complete V2 feature documentation
-- `~/.claude/plans/jazzy-bubbling-pinwheel.md` - Implementation plan
+Located in repository:
+- `V3_FEATURES.md` - Complete feature documentation
+- `ARCHITECTURE.md` - System architecture overview
+- `QUICKSTART.md` - Quick start guide
 
 ---
 
